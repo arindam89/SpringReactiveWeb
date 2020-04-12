@@ -1,4 +1,4 @@
-package com.geekpaul.springweb;
+package com.geekpaul.springweb.reactive.greeting;
 
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.ClientResponse;

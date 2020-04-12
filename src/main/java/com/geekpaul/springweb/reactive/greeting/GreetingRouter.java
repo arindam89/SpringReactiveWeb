@@ -1,4 +1,4 @@
-package com.geekpaul.springweb;
+package com.geekpaul.springweb.reactive.greeting;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,6 +13,9 @@ public class GreetingRouter {
     @Bean
     public RouterFunction<ServerResponse> route(GreetingHandler greetingHandler) {
         return RouterFunctions
-                .route(RequestPredicates.GET("/hello").and(RequestPredicates.accept(MediaType.TEXT_PLAIN)), greetingHandler::hello);
+                .route(
+                        RequestPredicates.GET("/hello")
+                                .and(RequestPredicates.accept(MediaType.TEXT_PLAIN)),
+                        greetingHandler::hello);
     }
 }
