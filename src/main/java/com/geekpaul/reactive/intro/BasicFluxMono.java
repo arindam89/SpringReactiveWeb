@@ -88,7 +88,7 @@ public class BasicFluxMono {
                 l.processComplete();
             }
         }
-
+        // Creating a Async operation somewhere.
         EventProcessor processor = new EventProcessor();
 
         Flux<String> bridge = Flux.create(sink -> {
