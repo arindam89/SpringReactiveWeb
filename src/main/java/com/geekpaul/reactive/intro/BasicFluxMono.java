@@ -4,9 +4,14 @@ package com.geekpaul.reactive.intro;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.Stream;
 
 public class BasicFluxMono {
 
@@ -126,5 +131,114 @@ public class BasicFluxMono {
                 .subscribe(System.out::println);
     }
 
+    // This will run the code in main thread
+    @Test
+    public void publisherOnMainThread() throws InterruptedException {
+        final Mono<String> mono = Mono.just("Hello from thread: ");
+        mono.subscribe(v -> System.out.println(v + Thread.currentThread().getName()));
+    }
+
+    /** Output
+     * 19:22:01.181 [main] DEBUG reactor.util.Loggers$LoggerFactory - Using Slf4j logging framework
+     * Hello from thread: main
+     *
+     * Process finished with exit code 0
+     **/
+
+    // This will run the code in a separate thread
+    @Test
+    public void publisherOnSeparateThread() throws InterruptedException {
+        Thread t = new Thread(() -> {
+            final Mono<String> mono = Mono.just("Hello from thread: ");
+            mono.subscribe(v -> System.out.println(v + Thread.currentThread().getName()));
+        });
+        t.start();
+        t.join();
+    }
+
+    /** Output
+     * 19:23:57.597 [main] DEBUG reactor.util.Loggers$LoggerFactory - Using Slf4j logging framework
+     * Hello from thread: main
+     *
+     * Hello from thread: Thread-0
+     **/
+
+    @Test
+    public void threadBlocking() {
+        Flux.fromIterable(Arrays.asList(1,2,3,4,5))
+                .flatMap(a -> {
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    String info = a + " on thread " + Thread.currentThread().getName() + " at " + (new Date()).toString();
+                    return Mono.just(info);
+                }).subscribe(System.out::println);
+    }
+
+    @Test
+    public void threadNonBlockingBySchedulersProblem() throws InterruptedException {
+        Flux.fromIterable(Arrays.asList(1,2,3,4,5))
+                .publishOn(Schedulers.elastic())
+                .flatMap(a -> {
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    String info = a + " on thread " + Thread.currentThread().getName() + " at " + (new Date()).toString();
+                    return Mono.just(info);
+                })
+                .subscribe(System.out::println);
+        // Becasue the publish is happening at a different thread
+        // We have to wait on the Main for it to complete
+        Thread.sleep(10000);
+    }
+
+    // Solution of truly parallel
+    // https://stackoverflow.com/questions/49489348/project-reactor-parallel-execution
+    @Test
+    public void threadNonBlockingBySchedulers() throws InterruptedException {
+        Flux.fromIterable(Arrays.asList(1,2,3,4,5))
+                .parallel()
+                .runOn(Schedulers.elastic())
+                .flatMap(a -> {
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    String info = a + " on thread " + Thread.currentThread().getName() + " at " + (new Date()).toString();
+                    return Mono.just(info);
+                })
+                .sequential()
+                .subscribe(System.out::println);
+        // Becasue the publish is happening at a different thread
+        // We have to wait on the Main for it to complete
+        Thread.sleep(3000);
+    }
+
+    @Test
+    public void threadNonBlockingBySchedulersExecutor() throws InterruptedException {
+        ExecutorService myPool = Executors.newFixedThreadPool(10);
+        Flux.fromIterable(Arrays.asList(1,2,3,4,5))
+                .parallel()
+                .runOn(Schedulers.fromExecutorService(myPool))
+                .flatMap(a -> {
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    String info = a + " on thread " + Thread.currentThread().getName() + " at " + (new Date()).toString();
+                    return Mono.just(info);
+                })
+                .sequential()
+                .subscribe(System.out::println);
+        // Becasue the publish is happening at a different thread
+        // We have to wait on the Main for it to complete
+        Thread.sleep(3000);
+    }
 
 }
