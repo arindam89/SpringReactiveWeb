@@ -12,7 +12,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.stream.Stream;
 
 public class BasicFluxMono {
 
@@ -173,8 +172,12 @@ public class BasicFluxMono {
         }
     }
 
-    // Get the info about the current code and time
-    public String getInfo(Integer input) {
+    /**
+     * Get the info about the current code and time
+     * This is a generic Example of a Blocking call
+     * In reality it can be any Blocking call
+     */
+    public String blockingGetInfo(Integer input) {
         delay();
         return String.format("[%d] on thread [%s] at time [%s]",
                 input,
@@ -183,47 +186,131 @@ public class BasicFluxMono {
     }
 
 
+    /**
+     * Basic example to show that Reactor
+     * by itself will run the pipeline or code
+     * on the same thread on which .subscribe() happened.
+     */
     @Test
     public void threadBlocking() {
-        Flux.fromIterable(Arrays.asList(1,2,3,4,5))
-                .flatMap(a -> Mono.just(getInfo(a)))
+        Flux.range(1,5)
+                .flatMap(a -> Mono.just(blockingGetInfo(a)))
                 .subscribe(System.out::println);
     }
 
+    /**
+     * Adding a Scheduler puts the workload
+     * of the main thread and hands it over to the
+     * Scheduler orchestration.
+     * But, still it doesn't gurantee it will leverage
+     * all threads of create new threads whenever a
+     * Async task is requested. So, basically we wanted
+     * to fire all 5 tasks in 5 threads parallely
+     * but that will not happen and you will see
+     * it will end up reusing the same thread from the Scheduler
+     */
     @Test
-    public void threadNonBlockingBySchedulersProblem() throws InterruptedException {
-        Flux.fromIterable(Arrays.asList(1,2,3,4,5))
-                .publishOn(Schedulers.elastic())
-                .flatMap(a -> Mono.just(getInfo(a)))
-                .subscribe(System.out::println);
+    public void threadNonBlockingBySchedulersProblem()  {
+        Flux.range(1,5)
+            .publishOn(Schedulers.elastic())
+            .flatMap(a -> Mono.just(blockingGetInfo(a)))
+            .subscribe(System.out::println);
 
     }
 
     // Solution of truly parallel
     // https://stackoverflow.com/questions/49489348/project-reactor-parallel-execution
+
+    /**
+     * Quickfix by converting the Flux Stream
+     * to a parallel Flux which would runOn
+     * a Scheduler and will be submitted as parallel
+     * tasks depending on the .parallel() inputs
+     * By default it creates parallism of the same
+     * number of cores you have (for me it was 4)
+     */
     @Test
-    public void threadNonBlockingBySchedulers() throws InterruptedException {
-        Flux.fromIterable(Arrays.asList(1,2,3,4,5,6,7,8))
-                .parallel()
-                .runOn(Schedulers.elastic())
-                .flatMap(a -> Mono.just(getInfo(a)))
-                .sequential()
-                .subscribe(System.out::println);
+    public void threadNonBlockingBySchedulers() {
+        Flux.range(1,5)
+            .parallel()
+            .runOn(Schedulers.elastic())
+            .flatMap(a -> Mono.just(blockingGetInfo(a)))
+            .sequential()
+            .subscribe(System.out::println);
 
     }
 
+    /** Output
+     * Notice: No [5] ran after 2s, but [1] to [4] ran on the same time.
+     * [3] on thread [elastic-4] at time [Sun Apr 19 00:09:49 IST 2020]
+     * [1] on thread [elastic-2] at time [Sun Apr 19 00:09:49 IST 2020]
+     * [2] on thread [elastic-3] at time [Sun Apr 19 00:09:49 IST 2020]
+     * [4] on thread [elastic-5] at time [Sun Apr 19 00:09:49 IST 2020]
+     * [5] on thread [elastic-2] at time [Sun Apr 19 00:09:51 IST 2020]
+     */
+
+    /**
+     * Getting into ParallelFlux creates
+     * More confusion at times because even if
+     * we pass explicit threadpool with more threads
+     * it will not use those threads and again
+     * will be limited to .parallel() call
+     */
     @Test
-    public void threadNonBlockingBySchedulersExecutor() throws InterruptedException {
+    public void threadNonBlockingBySchedulersExecutor() {
         ExecutorService myPool = Executors.newFixedThreadPool(10);
-        Flux.fromIterable(Arrays.asList(1,2,3,4,5,6,7,8))
-                .parallel()
+        Flux.range(1,6)
+            .parallel()
+            .runOn(Schedulers.fromExecutorService(myPool))
+            .flatMap(a -> Mono.just(blockingGetInfo(a)))
+            .sequential()
+            .subscribe(System.out::println);
+    }
+
+    /**
+     * You can see even if we had 10 threads, only 4 are used.
+     [4] on thread [pool-1-thread-8] at time [Sun Apr 19 00:13:38 IST 2020]
+     [1] on thread [pool-1-thread-5] at time [Sun Apr 19 00:13:38 IST 2020]
+     [2] on thread [pool-1-thread-6] at time [Sun Apr 19 00:13:38 IST 2020]
+     [3] on thread [pool-1-thread-7] at time [Sun Apr 19 00:13:38 IST 2020]
+     [5] on thread [pool-1-thread-5] at time [Sun Apr 19 00:13:40 IST 2020]
+     [6] on thread [pool-1-thread-6] at time [Sun Apr 19 00:13:40 IST 2020]
+     */
+
+    /**
+     * We can fix this by passing a
+     * parallelism number to the
+     * parallel() method then that many
+     * Parallel Flux will be created from the Schedulers
+     * But again, Schedulers might have less Threads
+     * So, its a better practive to avoid parallel()
+     * for just wrapping blocking calls
+     * There are other powerful usages of ParallelFlux
+     */
+    @Test
+    public void threadNonBlockingBySchedulersExecutorFixed() {
+        ExecutorService myPool = Executors.newFixedThreadPool(10);
+        Flux.range(1,6)
+                .parallel(10)
                 .runOn(Schedulers.fromExecutorService(myPool))
-                .flatMap(a -> Mono.just(getInfo(a)))
+                .flatMap(a -> Mono.just(blockingGetInfo(a)))
                 .sequential()
                 .subscribe(System.out::println);
     }
 
     /**
+     * You can see now, everything ran at once and all 6 threads are new from the pool.
+     *  [4] on thread [pool-1-thread-5] at time [Sun Apr 19 00:17:57 IST 2020]
+     *  [1] on thread [pool-1-thread-1] at time [Sun Apr 19 00:17:57 IST 2020]
+     *  [3] on thread [pool-1-thread-3] at time [Sun Apr 19 00:17:57 IST 2020]
+     *  [5] on thread [pool-1-thread-4] at time [Sun Apr 19 00:17:57 IST 2020]
+     *  [2] on thread [pool-1-thread-2] at time [Sun Apr 19 00:17:57 IST 2020]
+     *  [6] on thread [pool-1-thread-6] at time [Sun Apr 19 00:17:57 IST 2020]
+     */
+
+
+    /**
+     * THERE GOT TO BE A BETTER WAY! AND THERE IS!
      * This is the Magic method which takes a Blocking call
      * and based on Scheduler makes it into completely
      * non-blocking Stream of data from the Publisher
@@ -234,22 +321,29 @@ public class BasicFluxMono {
     public Mono<String> getInfoCallable(Integer a) {
         // Returns a non-blocking Publisher with a Single Value (Mono)
         return Mono
-                .fromCallable(() -> getInfo(a)) // Define blocking call
+                .fromCallable(() -> blockingGetInfo(a)) // Define blocking call
                 .subscribeOn(Schedulers.elastic()); // Define the execution model
     }
 
     /**
      * With the above wrapper on getInfo(),
      * we can now compose many calls in parallel
+     * No need to worry about how much parallism
+     * it will do as much as the Scheduler can
+     * keep upto.
      */
     @Test
     public void blockingToNonBlockingRightWay() {
-        Flux.fromIterable(Arrays.asList(1,2,3,4,5,6,7,8,9))
+        Flux.range(1,10)
                 .flatMap(this::getInfoCallable)
                 .subscribe(System.out::println);
 
     }
 
+    /**
+     * Helper method which waits for the tests
+     * to finish.
+     */
     @AfterAll
     static void waitForMe() {
         try {
