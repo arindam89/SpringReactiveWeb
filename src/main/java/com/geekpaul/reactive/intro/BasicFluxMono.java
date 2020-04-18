@@ -163,16 +163,30 @@ public class BasicFluxMono {
      * Hello from thread: Thread-0
      **/
 
+    // Just simulate some delay on the current thread.
+    public void delay() {
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Get the info about the current code and time
+    public String getInfo(Integer input) {
+        return String.format("[%d] on thread [%s] at time [%s]",
+                input,
+                Thread.currentThread().getName(),
+                new Date());
+    }
+
+
     @Test
     public void threadBlocking() {
         Flux.fromIterable(Arrays.asList(1,2,3,4,5))
                 .flatMap(a -> {
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    String info = a + " on thread " + Thread.currentThread().getName() + " at " + (new Date()).toString();
+                    delay();
+                    String info = getInfo(a);
                     return Mono.just(info);
                 }).subscribe(System.out::println);
     }
@@ -182,15 +196,11 @@ public class BasicFluxMono {
         Flux.fromIterable(Arrays.asList(1,2,3,4,5))
                 .publishOn(Schedulers.elastic())
                 .flatMap(a -> {
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    String info = a + " on thread " + Thread.currentThread().getName() + " at " + (new Date()).toString();
-                    return Mono.just(info);
+                    delay();
+                    return Mono.just(getInfo(a));
                 })
                 .subscribe(System.out::println);
+
         // Becasue the publish is happening at a different thread
         // We have to wait on the Main for it to complete
         Thread.sleep(10000);
@@ -204,16 +214,12 @@ public class BasicFluxMono {
                 .parallel()
                 .runOn(Schedulers.elastic())
                 .flatMap(a -> {
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    String info = a + " on thread " + Thread.currentThread().getName() + " at " + (new Date()).toString();
-                    return Mono.just(info);
+                    delay();
+                    return Mono.just(getInfo(a));
                 })
                 .sequential()
                 .subscribe(System.out::println);
+
         // Becasue the publish is happening at a different thread
         // We have to wait on the Main for it to complete
         Thread.sleep(3000);
@@ -226,16 +232,12 @@ public class BasicFluxMono {
                 .parallel()
                 .runOn(Schedulers.fromExecutorService(myPool))
                 .flatMap(a -> {
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    String info = a + " on thread " + Thread.currentThread().getName() + " at " + (new Date()).toString();
-                    return Mono.just(info);
+                    delay();
+                    return Mono.just(getInfo(a));
                 })
                 .sequential()
                 .subscribe(System.out::println);
+
         // Becasue the publish is happening at a different thread
         // We have to wait on the Main for it to complete
         Thread.sleep(3000);
