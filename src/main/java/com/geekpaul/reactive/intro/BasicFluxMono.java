@@ -1,6 +1,7 @@
 package com.geekpaul.reactive.intro;
 
 
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -174,6 +175,7 @@ public class BasicFluxMono {
 
     // Get the info about the current code and time
     public String getInfo(Integer input) {
+        delay();
         return String.format("[%d] on thread [%s] at time [%s]",
                 input,
                 Thread.currentThread().getName(),
@@ -184,63 +186,77 @@ public class BasicFluxMono {
     @Test
     public void threadBlocking() {
         Flux.fromIterable(Arrays.asList(1,2,3,4,5))
-                .flatMap(a -> {
-                    delay();
-                    String info = getInfo(a);
-                    return Mono.just(info);
-                }).subscribe(System.out::println);
+                .flatMap(a -> Mono.just(getInfo(a)))
+                .subscribe(System.out::println);
     }
 
     @Test
     public void threadNonBlockingBySchedulersProblem() throws InterruptedException {
         Flux.fromIterable(Arrays.asList(1,2,3,4,5))
                 .publishOn(Schedulers.elastic())
-                .flatMap(a -> {
-                    delay();
-                    return Mono.just(getInfo(a));
-                })
+                .flatMap(a -> Mono.just(getInfo(a)))
                 .subscribe(System.out::println);
 
-        // Becasue the publish is happening at a different thread
-        // We have to wait on the Main for it to complete
-        Thread.sleep(10000);
     }
 
     // Solution of truly parallel
     // https://stackoverflow.com/questions/49489348/project-reactor-parallel-execution
     @Test
     public void threadNonBlockingBySchedulers() throws InterruptedException {
-        Flux.fromIterable(Arrays.asList(1,2,3,4,5))
+        Flux.fromIterable(Arrays.asList(1,2,3,4,5,6,7,8))
                 .parallel()
                 .runOn(Schedulers.elastic())
-                .flatMap(a -> {
-                    delay();
-                    return Mono.just(getInfo(a));
-                })
+                .flatMap(a -> Mono.just(getInfo(a)))
                 .sequential()
                 .subscribe(System.out::println);
 
-        // Becasue the publish is happening at a different thread
-        // We have to wait on the Main for it to complete
-        Thread.sleep(3000);
     }
 
     @Test
     public void threadNonBlockingBySchedulersExecutor() throws InterruptedException {
         ExecutorService myPool = Executors.newFixedThreadPool(10);
-        Flux.fromIterable(Arrays.asList(1,2,3,4,5))
+        Flux.fromIterable(Arrays.asList(1,2,3,4,5,6,7,8))
                 .parallel()
                 .runOn(Schedulers.fromExecutorService(myPool))
-                .flatMap(a -> {
-                    delay();
-                    return Mono.just(getInfo(a));
-                })
+                .flatMap(a -> Mono.just(getInfo(a)))
                 .sequential()
                 .subscribe(System.out::println);
+    }
 
-        // Becasue the publish is happening at a different thread
-        // We have to wait on the Main for it to complete
-        Thread.sleep(3000);
+    /**
+     * This is the Magic method which takes a Blocking call
+     * and based on Scheduler makes it into completely
+     * non-blocking Stream of data from the Publisher
+     * which can be consumed by Subscribers.
+     * @param a Int signifies which one it it.
+     * @return Mono of the future Info.
+     */
+    public Mono<String> getInfoCallable(Integer a) {
+        // Returns a non-blocking Publisher with a Single Value (Mono)
+        return Mono
+                .fromCallable(() -> getInfo(a)) // Define blocking call
+                .subscribeOn(Schedulers.elastic()); // Define the execution model
+    }
+
+    /**
+     * With the above wrapper on getInfo(),
+     * we can now compose many calls in parallel
+     */
+    @Test
+    public void blockingToNonBlockingRightWay() {
+        Flux.fromIterable(Arrays.asList(1,2,3,4,5,6,7,8,9))
+                .flatMap(this::getInfoCallable)
+                .subscribe(System.out::println);
+
+    }
+
+    @AfterAll
+    static void waitForMe() {
+        try {
+            Thread.sleep(10_000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
 }
