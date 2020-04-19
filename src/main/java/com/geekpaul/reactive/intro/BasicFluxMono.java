@@ -347,7 +347,7 @@ public class BasicFluxMono {
     @AfterAll
     static void waitForMe() {
         try {
-            Thread.sleep(10_000);
+            Thread.sleep(12_000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
